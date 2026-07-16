@@ -110,6 +110,9 @@ class CardScanner {
       .map((el) => this._parseCard(el))
       .filter((card) => card !== null);
 
+    // 从Vue pageList丰富卡片数据
+    this._enrichFromPageList(this.currentCards, targetDoc);
+
     for (const card of this.currentCards) {
       if (!this.seenIds.has(card.id)) {
         this.seenIds.add(card.id);
@@ -203,10 +206,22 @@ class CardScanner {
         id,
         name,
         title: title || '',
+        description: title || '',
         company: '',
         greetButton,
         alreadyGreeted,
         vueInstance: this._findVueInstance(element),
+        // 丰富字段 (后续由_enrichFromPageList填充)
+        ageDesc: '',
+        gender: '',
+        workYears: '',
+        degree: '',
+        education: '',
+        lastWork: '',
+        expectLocation: '',
+        cityName: '',
+        activeTime: '',
+        _pageData: null,
       };
     } catch (e) {
       logger.debug('card parse error: ' + e.message);
@@ -269,6 +284,72 @@ class CardScanner {
       parent = parent.parentElement;
     }
     return null;
+  }
+
+  /**
+   * 从Vue组件 $props.pageList 丰富卡片数据
+   */
+  _enrichFromPageList(cards, targetDoc) {
+    try {
+      const cardList = targetDoc.querySelector('.card-list');
+      if (!cardList || !cardList.__vue__) return;
+      const inst = cardList.__vue__;
+      const pageList = inst.$props?.pageList;
+      if (!Array.isArray(pageList)) return;
+
+      for (let i = 0; i < cards.length; i++) {
+        const card = cards[i];
+        let entry = null;
+
+        // 按名称匹配
+        for (const e of pageList) {
+          if (e.geekName === card.name) { entry = e; break; }
+        }
+        // 按索引降级
+        if (!entry && i < pageList.length) {
+          entry = pageList[i];
+          if (entry.geekName && entry.geekName.slice(0, 1) !== card.name.slice(0, 1)) {
+            entry = null;
+          }
+        }
+
+        if (!entry) continue;
+
+        card._pageData = entry;
+
+        // 补充字段
+        if (!card.ageDesc) card.ageDesc = entry.ageDesc || entry.showAge || '';
+        if (!card.gender) card.gender = entry.sexCode === 1 ? '男' : entry.sexCode === 2 ? '女' : entry.sexCode || '';
+        if (!card.workYears) card.workYears = entry.workYearsShow || entry.geekWorkYear || '';
+        if (!card.degree) card.degree = entry.geekDegree || entry.eduLevelShow || '';
+
+        // 教育经历
+        if (!card.education) {
+          const edus = entry.showEdus || entry.geekEdus || [];
+          if (edus.length > 0) {
+            card.education = [edus[0].school, edus[0].major, edus[0].degreeName]
+              .filter(Boolean).join(' / ');
+          }
+        }
+
+        // 最近工作
+        if (!card.lastWork && entry.geekLastWork) {
+          card.lastWork = [entry.geekLastWork.company, entry.geekLastWork.positionName]
+            .filter(Boolean).join(' · ');
+        }
+
+        // 期望城市
+        if (!card.expectLocation) {
+          card.expectLocation = entry.expectLocationName || entry.expectLocation || '';
+        }
+        if (!card.cityName) card.cityName = entry.cityName || '';
+
+        // 活跃状态
+        if (!card.activeTime) card.activeTime = entry.activeTimeDesc || entry.activeStatus || '';
+      }
+    } catch (e) {
+      logger.debug('_enrichFromPageList error: ' + e.message);
+    }
   }
 
   getAllCards() { return [...this.currentCards]; }

@@ -24,6 +24,8 @@ import { stateManager } from './state-manager.js';
 import { logger } from './logger.js';
 import { candidateDB } from './database.js';
 import { sendGreetAPI, extractProfile } from './api-greet.js';
+import { loadProfile } from './intention-learner.js';
+import { filterCandidates, getMinScore } from './candidate-scorer.js';
 
 /**
  * 招呼语发送结果
@@ -150,6 +152,28 @@ class ActionEngine {
           }
           cardQueue = newCards.filter(c => !stateManager.isProcessed(c.id));
           if (cardQueue.length === 0) continue;
+        }
+        
+        // 智能筛选
+        const profile = loadProfile();
+        if (profile) {
+          const { passed, rejected } = filterCandidates(cardQueue, profile);
+          logger.info('筛选结果: 达标 ' + passed.length + ' / 淘汰 ' + rejected.length +
+            ' (分数线: ' + getMinScore() + '分)');
+          if (rejected.length > 0) {
+            logger.debug('淘汰: ' + rejected.map(c => c.name + '(' + (c._score?.total || 0) + '分)').join(', '));
+          }
+          cardQueue = passed;
+          if (cardQueue.length === 0) {
+            logger.info('本页无达标候选人，加载更多');
+            const tgtWin = cardScanner.getTargetWindow();
+            const tgtDoc = cardScanner.getTargetDocument() || document;
+            tgtWin.scrollTo({ top: tgtDoc.body.scrollHeight, behavior: 'smooth' });
+            await new Promise(r => setTimeout(r, 2000));
+            continue;
+          }
+        } else {
+          logger.info('无筛选画像，不过滤');
         }
 
         logger.info('collected ' + cardQueue.length + ' candidates, processing...');

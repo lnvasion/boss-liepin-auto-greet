@@ -552,6 +552,7 @@
         }
       }
       this.currentCards = cardElements.map((el) => this._parseCard(el)).filter((card) => card !== null);
+      this._enrichFromPageList(this.currentCards, targetDoc);
       for (const card of this.currentCards) {
         if (!this.seenIds.has(card.id)) {
           this.seenIds.add(card.id);
@@ -621,10 +622,22 @@
           id,
           name,
           title: title || "",
+          description: title || "",
           company: "",
           greetButton,
           alreadyGreeted,
-          vueInstance: this._findVueInstance(element)
+          vueInstance: this._findVueInstance(element),
+          // 丰富字段 (后续由_enrichFromPageList填充)
+          ageDesc: "",
+          gender: "",
+          workYears: "",
+          degree: "",
+          education: "",
+          lastWork: "",
+          expectLocation: "",
+          cityName: "",
+          activeTime: "",
+          _pageData: null
         };
       } catch (e) {
         logger.debug("card parse error: " + e.message);
@@ -683,6 +696,56 @@
         parent = parent.parentElement;
       }
       return null;
+    }
+    /**
+     * 从Vue组件 $props.pageList 丰富卡片数据
+     */
+    _enrichFromPageList(cards, targetDoc) {
+      try {
+        const cardList = targetDoc.querySelector(".card-list");
+        if (!cardList || !cardList.__vue__) return;
+        const inst = cardList.__vue__;
+        const pageList = inst.$props?.pageList;
+        if (!Array.isArray(pageList)) return;
+        for (let i = 0; i < cards.length; i++) {
+          const card = cards[i];
+          let entry = null;
+          for (const e of pageList) {
+            if (e.geekName === card.name) {
+              entry = e;
+              break;
+            }
+          }
+          if (!entry && i < pageList.length) {
+            entry = pageList[i];
+            if (entry.geekName && entry.geekName.slice(0, 1) !== card.name.slice(0, 1)) {
+              entry = null;
+            }
+          }
+          if (!entry) continue;
+          card._pageData = entry;
+          if (!card.ageDesc) card.ageDesc = entry.ageDesc || entry.showAge || "";
+          if (!card.gender) card.gender = entry.sexCode === 1 ? "\u7537" : entry.sexCode === 2 ? "\u5973" : entry.sexCode || "";
+          if (!card.workYears) card.workYears = entry.workYearsShow || entry.geekWorkYear || "";
+          if (!card.degree) card.degree = entry.geekDegree || entry.eduLevelShow || "";
+          if (!card.education) {
+            const edus = entry.showEdus || entry.geekEdus || [];
+            if (edus.length > 0) {
+              card.education = [edus[0].school, edus[0].major, edus[0].degreeName].filter(Boolean).join(" / ");
+            }
+          }
+          if (!card.lastWork && entry.geekLastWork) {
+            card.lastWork = [entry.geekLastWork.company, entry.geekLastWork.positionName].filter(Boolean).join(" \xB7 ");
+          }
+          if (!card.expectLocation) {
+            card.expectLocation = entry.expectLocationName || entry.expectLocation || "";
+          }
+          if (!card.cityName) card.cityName = entry.cityName || "";
+          if (!card.activeTime) card.activeTime = entry.activeTimeDesc || entry.activeStatus || "";
+        }
+      } catch (e) {
+        logger.debug("_enrichFromPageList error: " + e.message);
+      }
     }
     getAllCards() {
       return [...this.currentCards];
@@ -1197,6 +1260,347 @@
     };
   }
 
+  // src/intention-learner.js
+  var PROFILE_KEY = "boss_filter_profile";
+  function extractKeywords(texts, stopWords) {
+    const wordFreq = {};
+    const stops = new Set(stopWords || [
+      "\u7684",
+      "\u4E86",
+      "\u5728",
+      "\u662F",
+      "\u548C",
+      "\u4E0E",
+      "\u53CA",
+      "\u6216",
+      "\u7B49",
+      "\u5177\u5907",
+      "\u62E5\u6709",
+      "\u5177\u6709",
+      "\u80FD\u529B",
+      "\u65B9\u9762",
+      "\u76F8\u5173",
+      "\u4EE5\u4E0A",
+      "\u4EE5\u4E0B",
+      "\u53EF\u4EE5",
+      "\u80FD\u591F",
+      "\u8F83\u5F3A",
+      "\u826F\u597D",
+      "\u4F18\u79C0",
+      "\u4E00\u5B9A",
+      "\u719F\u6089",
+      "\u4E86\u89E3",
+      "\u638C\u63E1",
+      "\u80CC\u666F",
+      "\u7ECF\u9A8C",
+      "\u5DE5\u4F5C",
+      "\u8D1F\u8D23",
+      "\u53C2\u4E0E",
+      "\u4ECE\u4E8B",
+      "\u8FDB\u884C",
+      "\u5B8C\u6210",
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "9",
+      "0"
+    ]);
+    for (const text of texts) {
+      if (!text) continue;
+      const words = text.match(/[一-龥]{2,6}|[a-zA-Z]{3,}/g) || [];
+      for (const w of words) {
+        const lower = w.toLowerCase();
+        if (stops.has(lower) || stops.has(w) || w.length < 2) continue;
+        wordFreq[lower] = (wordFreq[lower] || 0) + 1;
+      }
+    }
+    return Object.entries(wordFreq).sort((a, b) => b[1] - a[1]).map(([word, count]) => ({ word, count }));
+  }
+  function buildProfile(cards) {
+    if (!cards || cards.length === 0) return null;
+    const texts = [];
+    const degrees = [];
+    const workYears = [];
+    const cities = [];
+    let has985211 = false, hasOverseas = false;
+    for (const card of cards) {
+      const d = card._pageData || {};
+      if (card.title) texts.push(card.title);
+      if (card.description) texts.push(card.description);
+      if (d.geekDesc) texts.push(typeof d.geekDesc === "string" ? d.geekDesc : d.geekDesc.content);
+      if (d.geekLastWork?.responsibility) texts.push(d.geekLastWork.responsibility);
+      if (d.geekDegree) degrees.push(d.geekDegree);
+      if (d.eduLevelShow) degrees.push(d.eduLevelShow);
+      if (d.geekWorkYear) {
+        const y = parseInt(d.geekWorkYear);
+        if (y > 0) workYears.push(y);
+      }
+      if (d.expectLocation) cities.push(d.expectLocation);
+      if (d.cityName) cities.push(d.cityName);
+      const eduList = d.showEdus || d.geekEdus || [];
+      for (const edu of eduList) {
+        const name = edu.school || edu.expName || "";
+        if (/985|211|双一流|清华|北大|复旦|交大|浙大|南大|武大|华科|中大|同济|人大|南开|厦大|哈工大|西交/i.test(name)) has985211 = true;
+        if (/[a-zA-Z].*(University|College|Institute)/i.test(name) && !/中国|师范|理工|工业|科技|外语/i.test(name)) hasOverseas = true;
+      }
+    }
+    const keywords = extractKeywords(texts, []);
+    const skillKeywords = keywords.filter((k) => k.count >= 2 && k.word.length >= 2).slice(0, 25);
+    const degreeDist = {};
+    for (const deg of degrees) {
+      const d = deg.includes("\u7855\u58EB") ? "\u7855\u58EB" : deg.includes("\u535A\u58EB") ? "\u535A\u58EB" : deg.includes("\u672C\u79D1") ? "\u672C\u79D1" : deg.includes("\u5927\u4E13") ? "\u5927\u4E13" : deg;
+      degreeDist[d] = (degreeDist[d] || 0) + 1;
+    }
+    const degreeSorted = Object.entries(degreeDist).sort((a, b) => b[1] - a[1]);
+    const yrMin = workYears.length > 0 ? Math.min(...workYears) : 1;
+    const yrMax = workYears.length > 0 ? Math.max(...workYears) : 10;
+    const yrAvg = workYears.length > 0 ? Math.round(workYears.reduce((a, b) => a + b, 0) / workYears.length) : 3;
+    const cityDist = {};
+    for (const c of cities) {
+      if (c && c.length > 1) cityDist[c] = (cityDist[c] || 0) + 1;
+    }
+    const topCities = Object.entries(cityDist).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    let schoolTier = 0;
+    if (has985211 && hasOverseas) schoolTier = 3;
+    else if (has985211) schoolTier = 2;
+    else if (hasOverseas) schoolTier = 3;
+    else schoolTier = 1;
+    const profile = {
+      createdAt: Date.now(),
+      source: "boss_recommend",
+      candidateCount: cards.length,
+      skillKeywords: skillKeywords.map((k) => k.word),
+      degreeRequired: degreeSorted[0]?.[0] || "\u672C\u79D1",
+      degreeDistribution: degreeSorted,
+      workYearsMin: yrMin,
+      workYearsMax: yrMax,
+      workYearsAvg: yrAvg,
+      schoolTier,
+      prefer985211: has985211,
+      preferOverseas: hasOverseas,
+      targetCities: topCities.map(([c]) => c),
+      salaryMin: 0,
+      salaryMax: 5e4,
+      industryKeywords: [],
+      sampleCandidates: cards.slice(0, 3).map((c) => ({
+        name: c.name,
+        age: c.ageDesc || "",
+        degree: c.degree || "",
+        workYears: c.workYears || "",
+        school: c.education || ""
+      }))
+    };
+    return profile;
+  }
+  function saveProfile(profile) {
+    try {
+      localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  function loadProfile() {
+    try {
+      const raw = localStorage.getItem(PROFILE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  function getProfileSummary(profile) {
+    if (!profile) return null;
+    return {
+      candidateCount: profile.candidateCount,
+      topSkills: profile.skillKeywords?.slice(0, 8).join("\u3001"),
+      degree: profile.degreeRequired,
+      workYears: `${profile.workYearsMin}-${profile.workYearsMax}\u5E74`,
+      cities: profile.targetCities?.slice(0, 3).join("\u3001"),
+      createdAt: new Date(profile.createdAt).toLocaleString("zh-CN")
+    };
+  }
+
+  // src/candidate-scorer.js
+  var DEFAULT_WEIGHTS = {
+    skills: 30,
+    degree: 10,
+    school: 10,
+    workYears: 10,
+    location: 10,
+    position: 15,
+    company: 10,
+    salary: 5
+  };
+  var _weights = { ...DEFAULT_WEIGHTS };
+  var _minScore = 40;
+  function setMinScore(s) {
+    _minScore = s;
+  }
+  function getMinScore() {
+    return _minScore;
+  }
+  function scoreSkills(card, profile) {
+    if (!profile.skillKeywords || profile.skillKeywords.length === 0) return _weights.skills;
+    const text = [
+      card.title || "",
+      card.description || "",
+      card.education || "",
+      card.lastWork || "",
+      card._pageData?.geekDesc?.content || card._pageData?.geekDesc || ""
+    ].join(" ").toLowerCase();
+    let matched = 0;
+    const keywords = profile.skillKeywords.slice(0, 15);
+    for (const kw of keywords) {
+      if (text.includes(kw.toLowerCase())) matched++;
+    }
+    if (keywords.length === 0) return Math.round(_weights.skills * 0.5);
+    return Math.round(_weights.skills * (matched / keywords.length));
+  }
+  function scoreDegree(card, profile) {
+    const degreeOrder = ["\u9AD8\u4E2D", "\u5927\u4E13", "\u672C\u79D1", "\u7855\u58EB", "\u535A\u58EB", "MBA", "EMBA"];
+    const cardDegree = card.degree || "";
+    const requiredDegree = profile.degreeRequired || "\u672C\u79D1";
+    const cardIdx = degreeOrder.findIndex((d) => cardDegree.includes(d));
+    const reqIdx = degreeOrder.findIndex((d) => requiredDegree.includes(d));
+    if (cardIdx === -1 || reqIdx === -1) return Math.round(_weights.degree * 0.5);
+    if (cardIdx >= reqIdx) return _weights.degree;
+    if (cardIdx === reqIdx - 1) return Math.round(_weights.degree * 0.7);
+    return Math.round(_weights.degree * 0.3);
+  }
+  function scoreSchool(card, profile) {
+    const eduText = (card.education || "").toLowerCase();
+    let score = 0;
+    if (profile.prefer985211 && /985|211|双一流|清华|北大|复旦|交大|浙大|南大|武大|华科|中大|同济|人大|南开|厦大|哈工大|西交/i.test(eduText)) {
+      score += _weights.school * 0.6;
+    }
+    if (profile.preferOverseas && /[a-z].*(university|college|institute|school)/i.test(eduText) && !/中国|师范|理工|工业|科技|农业|林业|海洋|民族|政法|财经|外国语|中医药/i.test(eduText)) {
+      score += _weights.school * 0.6;
+    }
+    if (score === 0 && /本科|学士|大学|学院/.test(eduText)) {
+      score = Math.round(_weights.school * 0.3);
+    }
+    return Math.min(_weights.school, score);
+  }
+  function scoreWorkYears(card, profile) {
+    const cardYears = parseInt(card.workYears) || 0;
+    const minYears = profile.workYearsMin || 1;
+    const maxYears = profile.workYearsMax || 10;
+    const avgYears = profile.workYearsAvg || 3;
+    if (cardYears === 0) return Math.round(_weights.workYears * 0.5);
+    if (cardYears >= minYears && cardYears <= maxYears) return _weights.workYears;
+    const dist = Math.abs(cardYears - avgYears);
+    if (dist <= 2) return Math.round(_weights.workYears * 0.8);
+    if (dist <= 5) return Math.round(_weights.workYears * 0.5);
+    return Math.round(_weights.workYears * 0.2);
+  }
+  function scoreLocation(card, profile) {
+    if (!profile.targetCities || profile.targetCities.length === 0) return Math.round(_weights.location * 0.5);
+    const cardCities = [card.expectLocation || "", card.cityName || ""].map((c) => c.toLowerCase());
+    const targets = profile.targetCities.map((c) => c.toLowerCase());
+    for (const tc of targets) {
+      for (const cc of cardCities) {
+        if (cc && tc && (cc.includes(tc) || tc.includes(cc))) return _weights.location;
+      }
+    }
+    return 0;
+  }
+  function scorePosition(card, profile) {
+    const text = [card.expectPosition || "", card.title || "", card.lastWork || ""].join(" ").toLowerCase();
+    const keywords = profile.skillKeywords?.slice(0, 10) || [];
+    let matched = 0;
+    for (const kw of keywords) {
+      if (text.includes(kw.toLowerCase())) matched++;
+    }
+    if (keywords.length === 0) return Math.round(_weights.position * 0.5);
+    return Math.round(_weights.position * (matched / Math.min(5, keywords.length)));
+  }
+  function scoreCompany(card, profile) {
+    const companyText = (card.lastWork || "").toLowerCase();
+    let score = 0;
+    const bigNames = [
+      "\u817E\u8BAF",
+      "\u963F\u91CC",
+      "\u767E\u5EA6",
+      "\u5B57\u8282",
+      "\u7F8E\u56E2",
+      "\u4EAC\u4E1C",
+      "\u7F51\u6613",
+      "\u534E\u4E3A",
+      "\u5C0F\u7C73",
+      "\u5FB7\u52E4",
+      "\u666E\u534E\u6C38\u9053",
+      "\u5B89\u6C38",
+      "\u6BD5\u9A6C\u5A01",
+      "\u9EA6\u80AF\u9521",
+      "\u6CE2\u58EB\u987F",
+      "\u8D1D\u6069",
+      "\u5FAE\u8F6F",
+      "\u8C37\u6B4C",
+      "\u4E9A\u9A6C\u900A",
+      "\u82F9\u679C",
+      "IBM",
+      "\u7532\u9AA8\u6587",
+      "\u4E2D\u91D1",
+      "\u4E2D\u4FE1",
+      "\u534E\u6CF0",
+      "\u56DB\u5927",
+      "500\u5F3A",
+      "\u4E0A\u5E02",
+      "\u5916\u4F01",
+      "\u592E\u4F01",
+      "\u56FD\u4F01"
+    ];
+    for (const name of bigNames) {
+      if (companyText.includes(name.toLowerCase())) {
+        score += _weights.company * 0.3;
+        break;
+      }
+    }
+    return Math.min(_weights.company, score + Math.round(_weights.company * 0.1));
+  }
+  function scoreSalary(card, profile) {
+    return Math.round(_weights.salary * 0.5);
+  }
+  function scoreCandidate(card, profile) {
+    if (!profile) return { total: 100, details: {}, passed: true, reason: "\u65E0\u753B\u50CF" };
+    const scores = {
+      skills: scoreSkills(card, profile),
+      degree: scoreDegree(card, profile),
+      school: scoreSchool(card, profile),
+      workYears: scoreWorkYears(card, profile),
+      location: scoreLocation(card, profile),
+      position: scorePosition(card, profile),
+      company: scoreCompany(card, profile),
+      salary: scoreSalary(card, profile)
+    };
+    const total = Object.values(scores).reduce((a, b) => a + b, 0);
+    const maxPossible = Object.values(_weights).reduce((a, b) => a + b, 0);
+    const normalizedTotal = Math.round(total / maxPossible * 100);
+    const passed = normalizedTotal >= _minScore;
+    return {
+      total: normalizedTotal,
+      maxPossible: 100,
+      details: scores,
+      passed,
+      reason: passed ? `\u8FBE\u6807 (${normalizedTotal}\u5206)` : `\u672A\u8FBE\u6807 (${normalizedTotal}\u5206 < ${_minScore}\u5206)`
+    };
+  }
+  function filterCandidates(cards, profile, minScore) {
+    if (minScore !== void 0) setMinScore(minScore);
+    const passed = [], rejected = [];
+    for (const card of cards) {
+      const result = scoreCandidate(card, profile);
+      card._score = result;
+      (result.passed ? passed : rejected).push(card);
+    }
+    return { passed, rejected };
+  }
+
   // src/action-engine.js
   var ActionEngine = class {
     constructor() {
@@ -1300,6 +1704,25 @@
             }
             cardQueue = newCards.filter((c) => !stateManager.isProcessed(c.id));
             if (cardQueue.length === 0) continue;
+          }
+          const profile = loadProfile();
+          if (profile) {
+            const { passed, rejected } = filterCandidates(cardQueue, profile);
+            logger.info("\u7B5B\u9009\u7ED3\u679C: \u8FBE\u6807 " + passed.length + " / \u6DD8\u6C70 " + rejected.length + " (\u5206\u6570\u7EBF: " + getMinScore() + "\u5206)");
+            if (rejected.length > 0) {
+              logger.debug("\u6DD8\u6C70: " + rejected.map((c) => c.name + "(" + (c._score?.total || 0) + "\u5206)").join(", "));
+            }
+            cardQueue = passed;
+            if (cardQueue.length === 0) {
+              logger.info("\u672C\u9875\u65E0\u8FBE\u6807\u5019\u9009\u4EBA\uFF0C\u52A0\u8F7D\u66F4\u591A");
+              const tgtWin = cardScanner.getTargetWindow();
+              const tgtDoc = cardScanner.getTargetDocument() || document;
+              tgtWin.scrollTo({ top: tgtDoc.body.scrollHeight, behavior: "smooth" });
+              await new Promise((r) => setTimeout(r, 2e3));
+              continue;
+            }
+          } else {
+            logger.info("\u65E0\u7B5B\u9009\u753B\u50CF\uFF0C\u4E0D\u8FC7\u6EE4");
           }
           logger.info("collected " + cardQueue.length + " candidates, processing...");
         }
@@ -1883,6 +2306,12 @@
       body.appendChild(buttonGroup);
       body.appendChild(toggleRow);
       body.appendChild(dbRow);
+      const filterRow = document.createElement("div");
+      Object.assign(filterRow.style, { padding: "6px 0", borderBottom: "1px solid #f0f0f0", fontSize: "12px" });
+      const profile = loadProfile();
+      const summary = getProfileSummary(profile);
+      filterRow.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;"><span>\u{1F3AF} \u7B5B\u9009\u753B\u50CF</span><span id="boss-auto-profile-status">' + (summary ? "\u2705 " + summary.candidateCount + "\u4EBA\u753B\u50CF" : "\u26A0 \u672A\u52A0\u8F7D") + '</span></div><div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;gap:6px;"><span>\u5206\u6570\u7EBF</span><input id="boss-auto-min-score" type="number" min="0" max="100" value="' + getMinScore() + '" style="width:42px;font-size:11px;border:1px solid #d9d9d9;border-radius:3px;padding:1px 4px;text-align:center;" title="\u6700\u4F4E\u5206\u6570\u7EBF"><span>\u5206</span><button id="boss-auto-learn" style="margin-left:auto;background:#1677ff;color:#fff;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">\u5B66\u4E60\u753B\u50CF</button></div>';
+      body.appendChild(filterRow);
       body.appendChild(speedRow);
       body.appendChild(logHeader);
       body.appendChild(logSection);
@@ -1911,6 +2340,34 @@
         e.stopPropagation();
         this._eventBus?.emit(EVENTS.STOP);
         panel.style.display = "none";
+        const scoreInput = document.getElementById("boss-auto-min-score");
+        if (scoreInput) {
+          scoreInput.addEventListener("change", () => {
+            const v = parseInt(scoreInput.value) || 40;
+            const clamped = Math.max(0, Math.min(100, v));
+            setMinScore(clamped);
+            scoreInput.value = clamped;
+          });
+        }
+        const learnBtn = document.getElementById("boss-auto-learn");
+        if (learnBtn) {
+          learnBtn.addEventListener("click", () => {
+            const cards = cardScanner.scanCards();
+            if (cards.length === 0) {
+              logger.warn("\u672A\u627E\u5230\u5019\u9009\u4EBA\u5361\u7247\uFF0C\u65E0\u6CD5\u5B66\u4E60");
+              return;
+            }
+            const newProfile = buildProfile(cards);
+            if (newProfile) {
+              saveProfile(newProfile);
+              const summary2 = getProfileSummary(newProfile);
+              const statusEl = document.getElementById("boss-auto-profile-status");
+              if (statusEl && summary2) statusEl.textContent = "\u2705 " + summary2.candidateCount + "\u4EBA\u753B\u50CF";
+              logger.success("\u7B5B\u9009\u753B\u50CF\u5DF2\u66F4\u65B0\uFF01\u5206\u6790 " + newProfile.candidateCount + " \u4EBA\uFF0C\u5173\u952E\u6280\u80FD: " + (summary2?.topSkills || ""));
+              this.updateProgress();
+            }
+          });
+        }
       });
       return panel;
     }

@@ -8,6 +8,9 @@ import { EVENTS, RUN_STATES } from './constants.js';
 import { logger } from './logger.js';
 import { stateManager } from './state-manager.js';
 import { candidateDB } from './database.js';
+import { buildProfile, loadProfile, hasProfile, getProfileSummary, saveProfile } from './intention-learner.js';
+import { getMinScore, setMinScore } from './candidate-scorer.js';
+import { cardScanner } from './card-scanner.js';
 
 class UIPanel {
   constructor() {
@@ -288,6 +291,15 @@ class UIPanel {
     body.appendChild(buttonGroup);
     body.appendChild(toggleRow);
     body.appendChild(dbRow);
+    
+    // 筛选画像
+    const filterRow = document.createElement('div');
+    Object.assign(filterRow.style, { padding: '6px 0', borderBottom: '1px solid #f0f0f0', fontSize: '12px' });
+    const profile = loadProfile();
+    const summary = getProfileSummary(profile);
+    filterRow.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;"><span>🎯 筛选画像</span><span id="boss-auto-profile-status">' + (summary ? '✅ ' + summary.candidateCount + '人画像' : '⚠ 未加载') + '</span></div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;gap:6px;"><span>分数线</span><input id="boss-auto-min-score" type="number" min="0" max="100" value="' + getMinScore() + '" style="width:42px;font-size:11px;border:1px solid #d9d9d9;border-radius:3px;padding:1px 4px;text-align:center;" title="最低分数线"><span>分</span><button id="boss-auto-learn" style="margin-left:auto;background:#1677ff;color:#fff;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">学习画像</button></div>';
+    body.appendChild(filterRow);
     body.appendChild(speedRow);
     body.appendChild(logHeader);
     body.appendChild(logSection);
@@ -319,6 +331,36 @@ class UIPanel {
       e.stopPropagation();
       this._eventBus?.emit(EVENTS.STOP);
       panel.style.display = 'none';
+    
+    // 筛选控件事件
+    const scoreInput = document.getElementById('boss-auto-min-score');
+    if (scoreInput) {
+      scoreInput.addEventListener('change', () => {
+        const v = parseInt(scoreInput.value) || 40;
+        const clamped = Math.max(0, Math.min(100, v));
+        setMinScore(clamped);
+        scoreInput.value = clamped;
+      });
+    }
+    const learnBtn = document.getElementById('boss-auto-learn');
+    if (learnBtn) {
+      learnBtn.addEventListener('click', () => {
+        const cards = cardScanner.scanCards();
+        if (cards.length === 0) {
+          logger.warn('未找到候选人卡片，无法学习');
+          return;
+        }
+        const newProfile = buildProfile(cards);
+        if (newProfile) {
+          saveProfile(newProfile);
+          const summary = getProfileSummary(newProfile);
+          const statusEl = document.getElementById('boss-auto-profile-status');
+          if (statusEl && summary) statusEl.textContent = '✅ ' + summary.candidateCount + '人画像';
+          logger.success('筛选画像已更新！分析 ' + newProfile.candidateCount + ' 人，关键技能: ' + (summary?.topSkills || ''));
+          this.updateProgress();
+        }
+      });
+    }
     });
 
     return panel;

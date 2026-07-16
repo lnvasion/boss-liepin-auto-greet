@@ -1413,6 +1413,46 @@
       return null;
     }
   }
+  function extractJobInfo() {
+    try {
+      const iframes = document.querySelectorAll("iframe");
+      let doc = document;
+      for (const f of iframes) {
+        if (f.src && f.src.includes("/web/frame/recommend")) {
+          try {
+            doc = f.contentDocument || f.contentWindow.document;
+          } catch (e) {
+          }
+          if (doc) break;
+        }
+      }
+      const cardList = doc.querySelector(".card-list");
+      if (cardList?.__vue__) {
+        const job = cardList.__vue__.currJob$;
+        if (job) {
+          return {
+            jobName: job.jobName || "",
+            label: job.label || "",
+            locationName: job.locationName || "",
+            salaryDesc: job.salaryDesc || ""
+          };
+        }
+      }
+    } catch (e) {
+    }
+    return null;
+  }
+  function updateCustomKeywords(keywordsText) {
+    const raw = localStorage.getItem(PROFILE_KEY);
+    const profile = raw ? JSON.parse(raw) : { createdAt: Date.now(), source: "custom", candidateCount: 0 };
+    if (keywordsText) {
+      const words = keywordsText.split(/[,，、\s\n]+/).filter((w) => w.length >= 2);
+      profile.customKeywords = words;
+    } else {
+      profile.customKeywords = [];
+    }
+    saveProfile(profile);
+  }
   function getProfileSummary(profile) {
     if (!profile) return null;
     return {
@@ -1445,7 +1485,6 @@
     return _minScore;
   }
   function scoreSkills(card, profile) {
-    if (!profile.skillKeywords || profile.skillKeywords.length === 0) return _weights.skills;
     const text = [
       card.title || "",
       card.description || "",
@@ -1453,13 +1492,19 @@
       card.lastWork || "",
       card._pageData?.geekDesc?.content || card._pageData?.geekDesc || ""
     ].join(" ").toLowerCase();
-    let matched = 0;
-    const keywords = profile.skillKeywords.slice(0, 15);
-    for (const kw of keywords) {
-      if (text.includes(kw.toLowerCase())) matched++;
+    const customKw = profile.customKeywords || [];
+    const skillKw = profile.skillKeywords || [];
+    const allKeywords = [...customKw, ...skillKw].slice(0, 20);
+    if (allKeywords.length === 0) return Math.round(_weights.skills * 0.5);
+    let matched = 0, totalWeight = 0;
+    for (const kw of allKeywords) {
+      const isCustom = customKw.includes(kw);
+      const w = isCustom ? 2 : 1;
+      totalWeight += w;
+      if (text.includes(kw.toLowerCase())) matched += w;
     }
-    if (keywords.length === 0) return Math.round(_weights.skills * 0.5);
-    return Math.round(_weights.skills * (matched / keywords.length));
+    if (totalWeight === 0) return Math.round(_weights.skills * 0.5);
+    return Math.round(_weights.skills * (matched / totalWeight));
   }
   function scoreDegree(card, profile) {
     const degreeOrder = ["\u9AD8\u4E2D", "\u5927\u4E13", "\u672C\u79D1", "\u7855\u58EB", "\u535A\u58EB", "MBA", "EMBA"];
@@ -2310,7 +2355,7 @@
       Object.assign(filterRow.style, { padding: "6px 0", borderBottom: "1px solid #f0f0f0", fontSize: "12px" });
       const profile = loadProfile();
       const summary = getProfileSummary(profile);
-      filterRow.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;"><span>\u{1F3AF} \u7B5B\u9009\u753B\u50CF</span><span id="boss-auto-profile-status">' + (summary ? "\u2705 " + summary.candidateCount + "\u4EBA\u753B\u50CF" : "\u26A0 \u672A\u52A0\u8F7D") + '</span></div><div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;gap:6px;"><span>\u5206\u6570\u7EBF</span><input id="boss-auto-min-score" type="number" min="0" max="100" value="' + getMinScore() + '" style="width:42px;font-size:11px;border:1px solid #d9d9d9;border-radius:3px;padding:1px 4px;text-align:center;" title="\u6700\u4F4E\u5206\u6570\u7EBF"><span>\u5206</span><button id="boss-auto-learn" style="margin-left:auto;background:#1677ff;color:#fff;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">\u5B66\u4E60\u753B\u50CF</button></div>';
+      filterRow.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;"><span>\u{1F3AF} \u7B5B\u9009\u753B\u50CF</span><span id="boss-auto-profile-status">' + (summary ? "\u2705 " + summary.candidateCount + "\u4EBA\u753B\u50CF" : "\u26A0 \u672A\u52A0\u8F7D") + '</span></div><input id="boss-auto-keywords" placeholder="\u5C97\u4F4D\u5173\u952E\u8BCD, \u9017\u53F7\u5206\u9694 (\u5982: \u82F1\u8BED\u6D41\u5229, \u8DE8\u5883\u652F\u4ED8, 3\u5E74\u9500\u552E)" style="width:100%;font-size:10px;border:1px solid #d9d9d9;border-radius:3px;padding:2px 6px;margin-bottom:4px;box-sizing:border-box;" value="' + (profile?.customKeywords || []).join(", ") + '"><div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;gap:6px;"><span>\u5206\u6570\u7EBF</span><input id="boss-auto-min-score" type="number" min="0" max="100" value="' + getMinScore() + '" style="width:42px;font-size:11px;border:1px solid #d9d9d9;border-radius:3px;padding:1px 4px;text-align:center;" title="\u6700\u4F4E\u5206\u6570\u7EBF"><span>\u5206</span><button id="boss-auto-learn" style="margin-left:auto;background:#1677ff;color:#fff;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">\u5B66\u4E60\u753B\u50CF</button></div>';
       body.appendChild(filterRow);
       body.appendChild(speedRow);
       body.appendChild(logHeader);
@@ -2341,7 +2386,7 @@
         this._eventBus?.emit(EVENTS.STOP);
         panel.style.display = "none";
       });
-      const scoreInput = document.getElementById("boss-auto-min-score");
+      const scoreInput = panel.querySelector("#boss-auto-min-score");
       if (scoreInput) {
         scoreInput.addEventListener("change", () => {
           const v = parseInt(scoreInput.value) || 40;
@@ -2350,7 +2395,13 @@
           scoreInput.value = clamped;
         });
       }
-      const learnBtn = document.getElementById("boss-auto-learn");
+      const keywordsInput = panel.querySelector("#boss-auto-keywords");
+      if (keywordsInput) {
+        keywordsInput.addEventListener("change", () => {
+          updateCustomKeywords(keywordsInput.value);
+        });
+      }
+      const learnBtn = panel.querySelector("#boss-auto-learn");
       if (learnBtn) {
         learnBtn.addEventListener("click", () => {
           const cards = cardScanner.scanCards();
@@ -2360,11 +2411,22 @@
           }
           const newProfile = buildProfile(cards);
           if (newProfile) {
+            const kwInput = panel.querySelector("#boss-auto-keywords");
+            if (kwInput && kwInput.value.trim()) {
+              updateCustomKeywords(kwInput.value);
+            }
+            const jobInfo = extractJobInfo();
+            if (jobInfo) {
+              newProfile.jobName = jobInfo.jobName;
+              newProfile.targetCities = [jobInfo.locationName, ...newProfile.targetCities || []].slice(0, 5);
+              logger.debug("\u804C\u4F4D\u4FE1\u606F: " + jobInfo.jobName + " " + jobInfo.locationName);
+            }
             saveProfile(newProfile);
             const summary2 = getProfileSummary(newProfile);
-            const statusEl = document.getElementById("boss-auto-profile-status");
+            const statusEl = panel.querySelector("#boss-auto-profile-status");
             if (statusEl && summary2) statusEl.textContent = "\u2705 " + summary2.candidateCount + "\u4EBA\u753B\u50CF";
             logger.success("\u7B5B\u9009\u753B\u50CF\u5DF2\u66F4\u65B0\uFF01\u5206\u6790 " + newProfile.candidateCount + " \u4EBA\uFF0C\u5173\u952E\u6280\u80FD: " + (summary2?.topSkills || ""));
+            if (jobInfo) logger.info("\u804C\u4F4D: " + jobInfo.label);
             this.updateProgress();
           }
         });

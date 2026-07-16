@@ -1640,7 +1640,7 @@
           document.addEventListener("mousemove", this._onResizeMove.bind(this));
           document.addEventListener("mouseup", this._onResizeEnd.bind(this));
           panel.appendChild(resizeHandle);
-          const maxInput = document.getElementById("liepin-auto-max");
+          const maxInput = panel.querySelector("#liepin-auto-max");
           if (maxInput) {
             maxInput.addEventListener("change", () => {
               const v = parseInt(maxInput.value) || 30;
@@ -1650,7 +1650,7 @@
               this.updateProgress();
             });
           }
-          const scoreInput = document.getElementById("liepin-auto-min-score");
+          const scoreInput = panel.querySelector("#liepin-auto-min-score");
           if (scoreInput) {
             scoreInput.addEventListener("change", () => {
               const v = parseInt(scoreInput.value) || 40;

@@ -19,19 +19,29 @@ export function setMinScore(s) { _minScore = s; }
 export function getMinScore() { return _minScore; }
 
 function scoreSkills(card, profile) {
-  if (!profile.skillKeywords || profile.skillKeywords.length === 0) return _weights.skills;
   const text = [
-    card.title || '', card.description || '',
-    card.education || '', card.lastWork || '',
+    card.title || '',
+    card.description || '',
+    card.education || '',
+    card.lastWork || '',
     (card._pageData?.geekDesc?.content || card._pageData?.geekDesc || ''),
   ].join(' ').toLowerCase();
-  let matched = 0;
-  const keywords = profile.skillKeywords.slice(0, 15);
-  for (const kw of keywords) {
-    if (text.includes(kw.toLowerCase())) matched++;
+
+  const customKw = profile.customKeywords || [];
+  const skillKw = profile.skillKeywords || [];
+  const allKeywords = [...customKw, ...skillKw].slice(0, 20);
+
+  if (allKeywords.length === 0) return Math.round(_weights.skills * 0.5);
+
+  let matched = 0, totalWeight = 0;
+  for (const kw of allKeywords) {
+    const isCustom = customKw.includes(kw);
+    const w = isCustom ? 2 : 1;
+    totalWeight += w;
+    if (text.includes(kw.toLowerCase())) matched += w;
   }
-  if (keywords.length === 0) return Math.round(_weights.skills * 0.5);
-  return Math.round(_weights.skills * (matched / keywords.length));
+  if (totalWeight === 0) return Math.round(_weights.skills * 0.5);
+  return Math.round(_weights.skills * (matched / totalWeight));
 }
 
 function scoreDegree(card, profile) {

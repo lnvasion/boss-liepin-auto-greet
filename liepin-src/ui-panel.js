@@ -171,7 +171,7 @@ class UIPanel {
     panel.appendChild(resizeHandle);
 
     // 上限输入
-    const maxInput = document.getElementById('liepin-auto-max');
+    const maxInput = panel.querySelector('#liepin-auto-max');
     if (maxInput) {
       maxInput.addEventListener('change', () => {
         const v = parseInt(maxInput.value) || 30;
@@ -183,7 +183,7 @@ class UIPanel {
     }
     
     // 分数线输入
-    const scoreInput = document.getElementById('liepin-auto-min-score');
+    const scoreInput = panel.querySelector('#liepin-auto-min-score');
     if (scoreInput) {
       scoreInput.addEventListener('change', () => {
         const v = parseInt(scoreInput.value) || 40;

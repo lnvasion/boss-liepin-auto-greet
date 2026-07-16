@@ -146,6 +146,51 @@ export function loadProfile() {
   try { const raw = localStorage.getItem(PROFILE_KEY); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
 }
 
+/**
+ * 从页面Vue数据自动提取职位信息
+ */
+export function extractJobInfo() {
+  try {
+    // BOSS直聘: 从iframe中的card-list Vue组件读取currJob$
+    const iframes = document.querySelectorAll('iframe');
+    let doc = document;
+    for (const f of iframes) {
+      if (f.src && f.src.includes('/web/frame/recommend')) {
+        try { doc = f.contentDocument || f.contentWindow.document; } catch (e) {}
+        if (doc) break;
+      }
+    }
+    const cardList = doc.querySelector('.card-list');
+    if (cardList?.__vue__) {
+      const job = cardList.__vue__.currJob$;
+      if (job) {
+        return {
+          jobName: job.jobName || '',
+          label: job.label || '',
+          locationName: job.locationName || '',
+          salaryDesc: job.salaryDesc || '',
+        };
+      }
+    }
+  } catch (e) { /* ignore */ }
+  return null;
+}
+
+/**
+ * 更新画像的自定义关键词
+ */
+export function updateCustomKeywords(keywordsText) {
+  const raw = localStorage.getItem(PROFILE_KEY);
+  const profile = raw ? JSON.parse(raw) : { createdAt: Date.now(), source: 'custom', candidateCount: 0 };
+  if (keywordsText) {
+    const words = keywordsText.split(/[,，、\s\n]+/).filter(w => w.length >= 2);
+    profile.customKeywords = words;
+  } else {
+    profile.customKeywords = [];
+  }
+  saveProfile(profile);
+}
+
 export function hasProfile() { return !!localStorage.getItem(PROFILE_KEY); }
 
 export function getProfileSummary(profile) {

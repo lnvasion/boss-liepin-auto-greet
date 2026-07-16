@@ -29,14 +29,16 @@ function scoreSkills(card, profile) {
 
   const customKw = profile.customKeywords || [];
   const skillKw = profile.skillKeywords || [];
-  const allKeywords = [...customKw, ...skillKw].slice(0, 20);
+  const allKeywords = [...customKw, ...skillKw].slice(0, 1000);
 
   if (allKeywords.length === 0) return Math.round(_weights.skills * 0.5);
 
   let matched = 0, totalWeight = 0;
   for (const kw of allKeywords) {
     const isCustom = customKw.includes(kw);
-    const w = isCustom ? 2 : 1;
+    let w = isCustom ? 2 : 1;
+    // 2字短词太泛 ("国际","业务","银行"), 权重减半
+    if (kw.length <= 2) w *= 0.5;
     totalWeight += w;
     if (text.includes(kw.toLowerCase())) matched += w;
   }

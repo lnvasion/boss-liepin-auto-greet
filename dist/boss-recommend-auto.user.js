@@ -2340,35 +2340,35 @@
         e.stopPropagation();
         this._eventBus?.emit(EVENTS.STOP);
         panel.style.display = "none";
-        const scoreInput = document.getElementById("boss-auto-min-score");
-        if (scoreInput) {
-          scoreInput.addEventListener("change", () => {
-            const v = parseInt(scoreInput.value) || 40;
-            const clamped = Math.max(0, Math.min(100, v));
-            setMinScore(clamped);
-            scoreInput.value = clamped;
-          });
-        }
-        const learnBtn = document.getElementById("boss-auto-learn");
-        if (learnBtn) {
-          learnBtn.addEventListener("click", () => {
-            const cards = cardScanner.scanCards();
-            if (cards.length === 0) {
-              logger.warn("\u672A\u627E\u5230\u5019\u9009\u4EBA\u5361\u7247\uFF0C\u65E0\u6CD5\u5B66\u4E60");
-              return;
-            }
-            const newProfile = buildProfile(cards);
-            if (newProfile) {
-              saveProfile(newProfile);
-              const summary2 = getProfileSummary(newProfile);
-              const statusEl = document.getElementById("boss-auto-profile-status");
-              if (statusEl && summary2) statusEl.textContent = "\u2705 " + summary2.candidateCount + "\u4EBA\u753B\u50CF";
-              logger.success("\u7B5B\u9009\u753B\u50CF\u5DF2\u66F4\u65B0\uFF01\u5206\u6790 " + newProfile.candidateCount + " \u4EBA\uFF0C\u5173\u952E\u6280\u80FD: " + (summary2?.topSkills || ""));
-              this.updateProgress();
-            }
-          });
-        }
       });
+      const scoreInput = document.getElementById("boss-auto-min-score");
+      if (scoreInput) {
+        scoreInput.addEventListener("change", () => {
+          const v = parseInt(scoreInput.value) || 40;
+          const clamped = Math.max(0, Math.min(100, v));
+          setMinScore(clamped);
+          scoreInput.value = clamped;
+        });
+      }
+      const learnBtn = document.getElementById("boss-auto-learn");
+      if (learnBtn) {
+        learnBtn.addEventListener("click", () => {
+          const cards = cardScanner.scanCards();
+          if (cards.length === 0) {
+            logger.warn("\u672A\u627E\u5230\u5019\u9009\u4EBA\u5361\u7247\uFF0C\u65E0\u6CD5\u5B66\u4E60");
+            return;
+          }
+          const newProfile = buildProfile(cards);
+          if (newProfile) {
+            saveProfile(newProfile);
+            const summary2 = getProfileSummary(newProfile);
+            const statusEl = document.getElementById("boss-auto-profile-status");
+            if (statusEl && summary2) statusEl.textContent = "\u2705 " + summary2.candidateCount + "\u4EBA\u753B\u50CF";
+            logger.success("\u7B5B\u9009\u753B\u50CF\u5DF2\u66F4\u65B0\uFF01\u5206\u6790 " + newProfile.candidateCount + " \u4EBA\uFF0C\u5173\u952E\u6280\u80FD: " + (summary2?.topSkills || ""));
+            this.updateProgress();
+          }
+        });
+      }
       return panel;
     }
     _createButton(text, color, onClick) {

@@ -331,6 +331,7 @@ class UIPanel {
       e.stopPropagation();
       this._eventBus?.emit(EVENTS.STOP);
       panel.style.display = 'none';
+    });
     
     // 筛选控件事件
     const scoreInput = document.getElementById('boss-auto-min-score');
@@ -361,7 +362,7 @@ class UIPanel {
         }
       });
     }
-    });
+    
 
     return panel;
   }

@@ -1,0 +1,13 @@
+{
+  "name": "boss-recommend-auto",
+  "version": "0.1.0",
+  "description": "BOSS直聘推荐页自动沟通工具 - Tampermonkey用户脚本",
+  "private": true,
+  "scripts": {
+    "build": "node build.js",
+    "watch": "node build.js --watch"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}

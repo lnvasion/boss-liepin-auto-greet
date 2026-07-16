@@ -17,6 +17,7 @@ const TM_HEADER = `// ==UserScript==
 // @author       Auto Tools
 // @match        https://lpt.liepin.com/recommend*
 // @match        https://lpt.liepin.com/recommend?*
+// @match        https://lpt.liepin.com/recommend/intentionCandidate*
 // @icon         https://lpt.liepin.com/favicon.ico
 // @grant        unsafeWindow
 // @run-at       document-idle

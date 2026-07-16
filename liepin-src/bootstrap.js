@@ -1,10 +1,17 @@
 /**
  * bootstrap.js — 猎聘自动沟通脚本入口
+ *
+ * 推荐页: 启动自动化沟通 (含筛选)
+ * 意向人选页: 自动学习候选人画像
  */
-import { PAGE_URL_PATTERN } from './constants.js';
+import { PAGE_URL_PATTERN, INTENTION_PAGE_PATTERN } from './constants.js';
 
 function isRecommendPage() {
   return window.location.href.includes(PAGE_URL_PATTERN);
+}
+
+function isIntentionPage() {
+  return window.location.href.includes(INTENTION_PAGE_PATTERN);
 }
 
 function waitForPageReady(timeout = 10000) {
@@ -16,9 +23,17 @@ function waitForPageReady(timeout = 10000) {
 }
 
 async function main() {
-  if (!isRecommendPage()) return;
+  if (!isRecommendPage() && !isIntentionPage()) return;
   await waitForPageReady();
-  // 动态 import core (由 esbuild 打包)
+
+  if (isIntentionPage()) {
+    // 意向人选页 — 自动学习模式
+    const { initIntentionLearner } = await import('./intention-learner.js');
+    initIntentionLearner();
+    return;
+  }
+
+  // 推荐页 — 自动化模式
   const { appCore } = await import('./core.js');
   appCore.init();
 }

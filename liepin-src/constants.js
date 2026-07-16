@@ -2,6 +2,7 @@
  * constants.js — 猎聘推荐页自动沟通配置
  */
 export const PAGE_URL_PATTERN = '/recommend';
+export const INTENTION_PAGE_PATTERN = '/intentionCandidate';
 
 // 候选人卡片容器选择器
 export const CARD_SELECTORS = [

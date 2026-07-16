@@ -5,6 +5,8 @@ import { EVENTS, RUN_STATES } from './constants.js';
 import { logger } from './logger.js';
 import { stateManager } from './state-manager.js';
 import { candidateDB } from './database.js';
+import { loadProfile, hasProfile, getProfileSummary } from './intention-learner.js';
+import { getMinScore, setMinScore } from './candidate-scorer.js';
 
 class UIPanel {
   constructor() {
@@ -140,6 +142,15 @@ class UIPanel {
     body.appendChild(btnGroup);
     body.appendChild(toggleRow);
     body.appendChild(speedRow);
+    
+    // 筛选画像状态
+    const filterRow = document.createElement('div');
+    Object.assign(filterRow.style, { padding: '6px 0', borderBottom: '1px solid #f0f0f0', fontSize: '12px' });
+    const profile = loadProfile();
+    const summary = getProfileSummary(profile);
+    filterRow.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;"><span>🎯 筛选画像</span><span id="liepin-auto-profile-status">' + (summary ? '✅ ' + summary.candidateCount + '人画像' : '⚠ 未加载') + '</span></div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;"><span>分数线</span><span><input id="liepin-auto-min-score" type="number" min="0" max="100" value="' + getMinScore() + '" style="width:42px;font-size:11px;border:1px solid #d9d9d9;border-radius:3px;padding:1px 4px;text-align:center;" title="最低分数线"> 分</span></div>';
+    body.appendChild(filterRow);
     body.appendChild(dbRow);
     body.appendChild(this.logContainer);
 
@@ -168,6 +179,17 @@ class UIPanel {
         stateManager.setMaxPerSession(clamped);
         maxInput.value = clamped;
         this.updateProgress();
+      });
+    }
+    
+    // 分数线输入
+    const scoreInput = document.getElementById('liepin-auto-min-score');
+    if (scoreInput) {
+      scoreInput.addEventListener('change', () => {
+        const v = parseInt(scoreInput.value) || 40;
+        const clamped = Math.max(0, Math.min(100, v));
+        setMinScore(clamped);
+        scoreInput.value = clamped;
       });
     }
 
